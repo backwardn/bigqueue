@@ -16,17 +16,19 @@ var (
 
 // bqConfig stores all the configuration related to bigqueue
 type bqConfig struct {
-	arenaSize int
+	arenaSize  int
+	memorySize int
 }
 
 // Option is function type that takes a bqConfig object
 // and sets various config parameters in the object
 type Option func(*bqConfig) error
 
-// newBQConfig creates an object of bqConfig with default paramtere values
+// newBQConfig creates an object of bqConfig with default parameter values
 func newBQConfig() *bqConfig {
 	return &bqConfig{
-		arenaSize: cDefaultArenaSize,
+		arenaSize:  cDefaultArenaSize,
+		memorySize: -1,
 	}
 }
 
@@ -38,6 +40,15 @@ func SetArenaSize(arenaSize int) Option {
 		}
 
 		c.arenaSize = arenaSize
+		return nil
+	}
+}
+
+// SetMemorySize returns an Option closure that sets memory size
+func SetMemorySize(memorySize int) Option {
+	return func(c *bqConfig) error {
+		// TODO: handle case when memory is unlimited
+		c.memorySize = memorySize
 		return nil
 	}
 }

@@ -4,9 +4,7 @@ package bigqueue
 func (bq *BigQueue) Enqueue(message []byte) error {
 	aid, offset := bq.index.getTail()
 
-	// write length
-	var err error
-	aid, offset, err = bq.writeLength(aid, offset, uint64(len(message)))
+	aid, offset, err := bq.writeLength(aid, offset, uint64(len(message)))
 	if err != nil {
 		return err
 	}
@@ -25,23 +23,25 @@ func (bq *BigQueue) Enqueue(message []byte) error {
 
 func (bq *BigQueue) writeLength(aid, offset int, length uint64) (int, int, error) {
 	// ensure that new arena is available if needed
-	if cInt64Size+offset >= bq.conf.arenaSize {
-		if err := bq.am.addNewArena(aid + 1); err != nil {
+	if cInt64Size+offset > bq.conf.arenaSize {
+		if err := bq.getNextArena(aid); err != nil {
 			return 0, 0, err
 		}
+		aid, offset = aid+1, 0
 	}
 
-	// check if length can be fit into same arena, if not, get new arena
-	if cInt64Size+offset <= bq.conf.arenaSize {
-		bq.am.getArena(aid).WriteUint64(offset, length)
-	} else {
-		aid, offset = aid+1, 0
-		bq.am.getArena(aid).WriteUint64(offset, length)
+	arena, err := bq.am.getArena(aid)
+	if err != nil {
+		return 0, 0, err
 	}
+	arena.WriteUint64(offset, length)
 
 	// update offset now
 	offset += cInt64Size
 	if offset == bq.conf.arenaSize {
+		if err := bq.getNextArena(aid); err != nil {
+			return 0, 0, err
+		}
 		aid, offset = aid+1, 0
 	}
 
@@ -51,10 +51,13 @@ func (bq *BigQueue) writeLength(aid, offset int, length uint64) (int, int, error
 // writeBytes writes byteSlice in arena with aid starting at offset
 func (bq *BigQueue) writeBytes(aid, offset int, byteSlice []byte) (int, int, error) {
 	length := len(byteSlice)
-
 	counter := 0
 	for {
-		bytesWritten, err := bq.am.getArena(aid).Write(byteSlice[counter:], offset)
+		arena, err := bq.am.getArena(aid)
+		if err != nil {
+			return 0, 0, err
+		}
+		bytesWritten, err := arena.Write(byteSlice[counter:], offset)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -63,7 +66,7 @@ func (bq *BigQueue) writeBytes(aid, offset int, byteSlice []byte) (int, int, err
 
 		// ensure the next arena is available if needed
 		if offset == bq.conf.arenaSize {
-			if err = bq.am.addNewArena(aid + 1); err != nil {
+			if err := bq.getNextArena(aid); err != nil {
 				return 0, 0, err
 			}
 
@@ -77,4 +80,18 @@ func (bq *BigQueue) writeBytes(aid, offset int, byteSlice []byte) (int, int, err
 	}
 
 	return aid, offset, nil
+}
+
+// getNextArena gets arena with arena ID prevAid+1.
+// It also unmap arena with arena ID prevAid
+func (bq *BigQueue) getNextArena(prevAid int) error {
+	if err := bq.am.unmapArena(prevAid, false); err != nil {
+		return err
+	}
+
+	if _, err := bq.am.addArena(prevAid + 1); err != nil {
+		return err
+	}
+
+	return nil
 }

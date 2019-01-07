@@ -8,6 +8,10 @@ var (
 	// ErrInvalidArenaSize is returned when persisted arena size
 	// doesn't match with desired arena size
 	ErrInvalidArenaSize = errors.New("mismatch in arena size")
+
+	// ErrInsufficientMemory is returned when memory size passed is less
+	// than size of two arenas
+	ErrInsufficientMemory = errors.New("insufficient memory size")
 )
 
 // BigQueue implements IBigQueue interface
@@ -29,6 +33,11 @@ func NewBigQueue(dir string, opts ...Option) (IBigQueue, error) {
 		}
 	}
 
+	// ensure that memory size is enough for head and tail arena
+	if conf.memorySize > 0 && conf.arenaSize*2 > conf.memorySize {
+		return nil, ErrInsufficientMemory
+	}
+
 	// create queue index
 	index, err := newQueueIndex(dir)
 	if err != nil {
@@ -43,7 +52,7 @@ func NewBigQueue(dir string, opts ...Option) (IBigQueue, error) {
 	// create arena manager
 	headAid, _ := index.getHead()
 	tailAid, _ := index.getTail()
-	am, err := newArenaManager(dir, conf, headAid, tailAid)
+	am, err := newArenaManager(dir, conf, headAid, tailAid, index)
 	if err != nil {
 		return nil, err
 	}
